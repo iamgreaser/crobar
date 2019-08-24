@@ -74,7 +74,10 @@ class LinuxDebugInterface(BaseDebugInterface):
 
     def _read_word(self, *, addr: int) -> int:
         """Read a word from the attached process."""
+        # Python assumes the return value is 32 bits wide.
+        # TODO: Somehow get a 64-bit result out of the thing
         result: int = self._ptrace(cmd=PTRACE_PEEKDATA, addr=c_uint64(addr))
+        #print(hex(result))
         # FIXME: it's hard to tell if an error has happened here
         #if result == -1: raise PtraceException(f"PTRACE_PEEKDATA failed for {hex(addr)}")
         return result
@@ -82,6 +85,7 @@ class LinuxDebugInterface(BaseDebugInterface):
     def _write_word(self, *, addr: int, data: int) -> None:
         """Read a word from the attached process."""
         result: int = self._ptrace(cmd=PTRACE_POKEDATA, addr=c_uint64(addr), data=c_uint64(data))
+        #print(result)
         if result == -1:
             raise PtraceException(f"PTRACE_POKEDATA failed")
 
@@ -100,17 +104,17 @@ class LinuxDebugInterface(BaseDebugInterface):
         """Write memory to the attached process."""
 
         # Pad memory with extra bytes from the process
-        # if the length isn't a whole number of 32-bit words
-        padded_length: int = (len(data)+0x3)&~0x3
+        # if the length isn't a whole number of 64-bit words
+        padded_length: int = (len(data)+0x7)&~0x7
         if padded_length > 0:
             data += self.read_memory(
                 addr=addr+len(data),
                 length=padded_length-len(data))
 
-        assert len(data) % 4 == 0
+        assert len(data) % 8 == 0
 
-        for offs in range(0, len(data), 4):
-            v: int = struct.unpack("<I", data[offs:offs+4])[0]
+        for offs in range(0, len(data), 8):
+            v: int = struct.unpack("<Q", data[offs:offs+8])[0]
             self._write_word(
                 addr=addr+offs,
                 data=v)
