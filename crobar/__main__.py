@@ -1,0 +1,32 @@
+import sys
+
+from .arch import ConcreteDebugInterface
+from .versions import ALL_VERSIONS
+from crobar.api import DebugInterface
+from crobar.api import TalosVersion
+
+
+# TODO move all this stuff out into proper classes and packages and stuff
+print("Attaching to Talos")
+debug_interface: DebugInterface = ConcreteDebugInterface()
+
+print("Finding Talos version")
+for talos_version_type in ALL_VERSIONS:
+    ver_addr, ver_string, = talos_version_type.get_version_identifier()
+    exe_string: bytes = debug_interface.read_memory(
+        addr=ver_addr,
+        length=len(ver_string))
+    if ver_string == exe_string:
+        print(f"Found Talos version: {talos_version_type!r}")
+        talos_version: TalosVersion = talos_version_type(
+            debug_interface=debug_interface)
+        break
+else:
+    raise Exception(f"Could not identify the version of the running Talos executable")
+
+print("Applying patches")
+
+sys.stdout.write("- patch_enable_esga: ")
+sys.stdout.write("OK" if talos_version.patch_enable_esga() else "Already patched")
+sys.stdout.write("\n")
+
