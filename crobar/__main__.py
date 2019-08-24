@@ -30,3 +30,7 @@ sys.stdout.write("- patch_enable_esga: ")
 sys.stdout.write("OK" if talos_version.patch_enable_esga() else "Already patched")
 sys.stdout.write("\n")
 
+sys.stdout.write("- patch_bypass_game_mode_checks_for_map_vote: ")
+sys.stdout.write("OK" if talos_version.patch_bypass_game_mode_checks_for_map_vote() else "Already patched")
+sys.stdout.write("\n")
+

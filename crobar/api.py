@@ -49,3 +49,8 @@ class TalosVersion(metaclass=ABCMeta):
         """PATCH: Stops prjStartNewTalosGame() from scrubbing out the gam_esgaStartAs variable."""
         raise NotImplementedError()
 
+    @abstractmethod
+    def patch_bypass_game_mode_checks_for_map_vote(self) -> bool:
+        """PATCH: Allows voting for any map regardless of game mode."""
+        raise NotImplementedError()
+
