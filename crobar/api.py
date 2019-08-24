@@ -62,11 +62,13 @@ class TalosVersion(metaclass=ABCMeta):
         "Cannot start vote to change map because requested level %1 is not valid forgame mode %2!"
 
         This shows up in two similar functions.
-        Choose the shorter one which apparently has 3 arguments.
+        One is shorter and apparently has 3 arguments.
         The other one is longer, has 1 argument, and does 3 calls to virtual methods on that argument.
 
         There should be two checks and if either of them fail, you end up failing the map vote.
         Patch out the first check, and leave the second check as-is.
+
+        Do it for both functions.
         """
         raise NotImplementedError()
 

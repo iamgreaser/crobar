@@ -26,11 +26,21 @@ class TalosVersion_v244371_linux_x86_32(BaseTalosVersion):
 
     def patch_bypass_game_mode_checks_for_map_vote(self) -> bool:
         """PATCH: Allows voting for any map regardless of game mode."""
-        return self.patch_memory(
+        patches_applied: List[bool] = []
+
+        patches_applied.append(self.patch_memory(
+            addr=0x089387b2,
+            old=bytes([0xe8, 0xd9, 0xcc, 0xc1, 0xff, 0x85, 0xc0, 0x75, 0x5d]),
+            new=bytes([0xe8, 0xd9, 0xcc, 0xc1, 0xff, 0x85, 0xc0, 0xeb, 0x5d]),
+        ))
+
+        patches_applied.append(self.patch_memory(
             addr=0x08939b2c,
             old=bytes([0xe8, 0x5f, 0xb9, 0xc1, 0xff, 0x85, 0xc0, 0x75, 0x63]),
             new=bytes([0xe8, 0x5f, 0xb9, 0xc1, 0xff, 0x85, 0xc0, 0xeb, 0x63]),
-        )
+        ))
+
+        return any(patches_applied)
 
     def patch_crash_on_nexus_0001(self) -> bool:
         """PATCH: WIP"""
