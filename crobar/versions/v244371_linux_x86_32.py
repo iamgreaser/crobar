@@ -1,6 +1,8 @@
-
+import struct
+from typing import List
 from typing import Tuple
 
+from crobar.api import HackingOpException
 from crobar.api import TalosVersion
 from .base import BaseTalosVersion
 
@@ -29,4 +31,57 @@ class TalosVersion_v244371_linux_x86_32(BaseTalosVersion):
             old=bytes([0xe8, 0x5f, 0xb9, 0xc1, 0xff, 0x85, 0xc0, 0x75, 0x63]),
             new=bytes([0xe8, 0x5f, 0xb9, 0xc1, 0xff, 0x85, 0xc0, 0xeb, 0x63]),
         )
+
+    def patch_crash_on_nexus_0001(self) -> bool:
+        """PATCH: WIP"""
+
+        return self.patch_memory(
+            addr=0x08a47b15,
+            old=bytes([0xe8, 0x86, 0x50, 0xa2, 0x00]),
+            new=bytes([0x90, 0x90, 0x90, 0x90, 0x90]),
+        )
+
+    def patch_upgrade_singleplayer(self) -> bool:
+        """PATCH: Upgrade the SinglePlayer mode to a multiplayer mode."""
+        patches_applied: List[bool] = []
+
+        game_mode_base: int
+        game_mode_count: int
+        game_mode_base, game_mode_count, = struct.unpack(
+            "<II",
+            self._debug_interface.read_memory(
+                addr=0x09e90fb8,
+                length=0x8))
+
+        # Find the SinglePlayer game mode
+        print(f"Game modes: {game_mode_count} @ 0x{game_mode_base:x}")
+        for idx in range(game_mode_count):
+            game_mode_addr: int = game_mode_base + idx*0x1B4
+            game_mode_data: bytes = self._debug_interface.read_memory(
+                addr=game_mode_addr,
+                length=0x1B4)
+
+            game_mode_name_ptr: int
+            game_mode_name_ptr, = struct.unpack("<I", game_mode_data[4:4+4])
+
+            # 16 bytes should be enough to get the point across
+            game_mode_name: bytes = self._debug_interface.read_memory(
+                addr=game_mode_name_ptr,
+                length=16)
+            game_mode_name = game_mode_name.partition(b"\x00")[0]
+            print(f"  - {idx:2d}: {game_mode_name!r}")
+            if game_mode_name == b"SinglePlayer":
+                print(f"    - Found it!")
+                break
+        else:
+            raise HackingOpException("Could not find the \"SinglePlayer\" game mode")
+
+        # Set gar_bAllowsMP = true and gar_ctMaxPlayersTop = 16
+        patches_applied.append(
+            self.patch_memory(
+                addr=game_mode_addr + 4*15,
+                old=bytes([0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]),
+                new=bytes([0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00])))
+
+        return any(patches_applied)
 

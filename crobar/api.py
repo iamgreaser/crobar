@@ -70,3 +70,32 @@ class TalosVersion(metaclass=ABCMeta):
         """
         raise NotImplementedError()
 
+    # Not required at the moment - experimental. --GM
+    #@abstractmethod
+    def patch_crash_on_nexus_0001(self) -> bool:
+        """PATCH: WIP
+
+        Patch-hunting advice: Join a game and go into the Nexus.
+        Then NOP out the final crashing call.
+        """
+        #raise NotImplementedError()
+        return False
+
+    @abstractmethod
+    def patch_upgrade_singleplayer(self) -> bool:
+        """PATCH: Upgrade the SinglePlayer mode to a multiplayer mode.
+
+        Patch-hunting advice:
+        There's a pointer to an array of game rules, and a length.
+        Also, do a search for the string "CGameRules",
+        then look for stuff that points to that string.
+
+        You should find a table.
+
+        The order there should match the order of the elements in a game rules set.
+
+        Hunting down the actual pointer itself is a bit tricky
+        as the game rules are somewhat further into the game rules set.
+        """
+        raise NotImplementedError()
+

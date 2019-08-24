@@ -34,3 +34,10 @@ sys.stdout.write("- patch_bypass_game_mode_checks_for_map_vote: ")
 sys.stdout.write("OK" if talos_version.patch_bypass_game_mode_checks_for_map_vote() else "Already patched")
 sys.stdout.write("\n")
 
+sys.stdout.write("- patch_crash_on_nexus_0001: ")
+sys.stdout.write("OK" if talos_version.patch_crash_on_nexus_0001() else "Already patched")
+sys.stdout.write("\n")
+
+sys.stdout.write("- patch_upgrade_singleplayer: ")
+sys.stdout.write("OK" if talos_version.patch_upgrade_singleplayer() else "Already patched")
+sys.stdout.write("\n")
