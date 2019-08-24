@@ -46,11 +46,27 @@ class TalosVersion(metaclass=ABCMeta):
 
     @abstractmethod
     def patch_enable_esga(self) -> bool:
-        """PATCH: Stops prjStartNewTalosGame() from scrubbing out the gam_esgaStartAs variable."""
+        """PATCH: Stops prjStartNewTalosGame() from scrubbing out the gam_esgaStartAs variable.
+
+        Patch-hunting advice:
+        Search for gam_esgaStartAs, set a write watchpoint on it, then start a game.
+        That instruction needs to be nopped.
+        """
         raise NotImplementedError()
 
     @abstractmethod
     def patch_bypass_game_mode_checks_for_map_vote(self) -> bool:
-        """PATCH: Allows voting for any map regardless of game mode."""
+        """PATCH: Allows voting for any map regardless of game mode.
+
+        Patch-hunting advice: Search for this string:
+        "Cannot start vote to change map because requested level %1 is not valid forgame mode %2!"
+
+        This shows up in two similar functions.
+        Choose the shorter one which apparently has 3 arguments.
+        The other one is longer, has 1 argument, and does 3 calls to virtual methods on that argument.
+
+        There should be two checks and if either of them fail, you end up failing the map vote.
+        Patch out the first check, and leave the second check as-is.
+        """
         raise NotImplementedError()
 
