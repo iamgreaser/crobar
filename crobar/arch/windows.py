@@ -28,9 +28,20 @@ PROCESS_VM_OPERATION = 0x0008
 PROCESS_VM_READ = 0x0010
 PROCESS_VM_WRITE = 0x0020
 
+TOKEN_ADJUST_PRIVILEGES     = 0x0020
+TOKEN_QUERY                 = 0x0008
+
+REQUEST_SE_DEBUG_NAME = (c_byte *32)(*(
+    b'\x01\x00\x00\x00\x00\x00\x00\x00'
+    b'\x14\x00\x00\x00\x00\x00\x00\x00'
+    b'\x00\x00\x00\x00\x00\x00\x00\x00'
+    b'\x02\x00\x00\x00\x00\x00\x00\x00'))
+
 # doing it this way to keep mypy happy --GM
 _windll = ctypes.windll # type: ignore
 _kernel32: CDLL = _windll.kernel32
+_psapi: CDLL = _windll.psapi
+_advapi32: CDLL = _windll.advapi32
 
 
 class WindowsDebugInterface(BaseDebugInterface):
@@ -68,14 +79,73 @@ class WindowsDebugInterface(BaseDebugInterface):
         # Then again, ovl075 was a thing, so I've definitely had it working on official Windows.
         # I don't quite recall how to get that garbage working.
 
+        # Give ourselves SeDebugPrivilege
+        current_process_token = c_uint32(0)
+        found_token: bool = _advapi32.OpenProcessToken(
+            _kernel32.GetCurrentProcess(),
+            c_uint32(0
+                | TOKEN_ADJUST_PRIVILEGES
+                | TOKEN_QUERY
+                ),
+            pointer(current_process_token))
+
+        if found_token == 0:
+            raise HackingOpException(f"Couldn't find current thread token")
+
+        """
+        # temp code to generate the struct bytes
+        class LUID(ctypes.Structure):
+            _fields_ = [
+                ('LowPart', c_uint32),
+                ('HighPart', c_uint64),]
+        class LUID_AND_ATTRIBUTES(ctypes.Structure):
+            _fields_ = [
+                ('Luid', LUID),
+                ('Attributes', c_uint32)]
+            def __init__(self, luid, attrib):
+                self.Luid = luid
+                self.Attributes = attrib
+        class TOKEN_PRIVILEGES(ctypes.Structure):
+            _fields_ = [
+                ('PrivilegeCount', c_uint32),
+                ('Privileges', LUID_AND_ATTRIBUTES*1)]
+            def __init__(self, array):
+                self.PrivilegeCount = len(array)
+                self.Privileges = (LUID_AND_ATTRIBUTES * len(array))(*array)
+            def send(self):
+                return ctypes.Structure.buffer(self)[:]
+
+        luid = LUID()
+        _advapi32.LookupPrivilegeValueW(
+            None,
+            ctypes.c_wchar_p("SeDebugPrivilege"),
+            pointer(luid))
+        luid_aa = LUID_AND_ATTRIBUTES(luid, 0x0002) # SE_PRIVILEGE_ENABLED
+        tp = TOKEN_PRIVILEGES([luid_aa])
+
+        print(bytes(tp))
+        # end temp code
+        """
+
+        adjusted_token: bool = _advapi32.AdjustTokenPrivileges(
+            current_process_token,
+            c_uint32(int(False)),
+            pointer(REQUEST_SE_DEBUG_NAME),
+            c_uint32(0),
+            None,
+            None)
+
+        if adjusted_token == 0:
+            raise HackingOpException(f"Failed to adjust process token")
+
         # Fetch all processes.
         # This should be large enough, hopefully
         process_list = (c_uint32 * 4096)()
         process_count_bytes = c_uint32(0)
-        did_enum: int = _kernel32.EnumProcesses(
+        did_enum: int = _psapi.EnumProcesses(
             pointer(process_list),
             c_uint32(sizeof(process_list)),
-            pointer(process_count))
+            pointer(process_count_bytes))
 
         if did_enum == 0:
             raise HackingOpException(f"EnumProcesses failed")
@@ -95,7 +165,7 @@ class WindowsDebugInterface(BaseDebugInterface):
                     | PROCESS_VM_READ
                     ),
                 c_uint32(int(False)),
-                c_uint32(self._pid))
+                c_uint32(pid))
 
             if prochandle == 0:
                 print(f"OpenProcess failed for pid {pid:d}, skipping")
@@ -105,7 +175,7 @@ class WindowsDebugInterface(BaseDebugInterface):
                 # Grab the first module we can.
                 module_buf = c_size_t(0)
                 module_buf_needed = c_uint32(0)
-                result_enum_modules: int = _kernel32.EnumProcessModules(
+                result_enum_modules: int = _psapi.EnumProcessModules(
                     prochandle,
                     pointer(module_buf),
                     sizeof(module_buf),
@@ -217,5 +287,3 @@ class WindowsDebugInterface(BaseDebugInterface):
         """Converts a relative-to-intended-memory-base address to an absolute address."""
 
         return addr + self._image_base_offset
-
-
