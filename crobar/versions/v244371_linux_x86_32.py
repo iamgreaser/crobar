@@ -121,5 +121,16 @@ class TalosVersion_v244371_linux_x86_32(BaseTalosVersion):
                 old=bytes([0xf6, 0x44, 0x24, 0x7c, 0x01, 0x0f, 0x85, 0x59, 0x03, 0x00, 0x00]),
                 new=bytes([0xf6, 0x44, 0x24, 0x7c, 0x00, 0x0f, 0x85, 0x59, 0x03, 0x00, 0x00])))
 
+        # Disable signature checks too
+        # Force this jump
+        # 0946fca6 85 c0           TEST       EAX,EAX
+        # 0946fca8 0f 84 da        JZ         LAB_0946fd88
+        #          00 00 00
+        patches_applied.append(
+            self.patch_memory(
+                addr=0x0946fca6,
+                old=bytes([0x85, 0xc0, 0x0f, 0x84, 0xda, 0x00, 0x00, 0x00]),
+                new=bytes([0x85, 0xc0, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90])))
+
         return any(patches_applied)
 
