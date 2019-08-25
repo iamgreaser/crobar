@@ -21,6 +21,11 @@ class DebugInterface(metaclass=ABCMeta):
         """Write memory to the attached process."""
         raise NotImplementedError()
 
+    @abstractmethod
+    def from_relative_addr(self, addr: int) -> int:
+        """Converts a relative-to-intended-memory-base address to an absolute address."""
+        raise NotImplementedError()
+
 
 class TalosVersion(metaclass=ABCMeta):
     __slots__ = ()
@@ -51,6 +56,14 @@ class TalosVersion(metaclass=ABCMeta):
         Patch-hunting advice:
         Search for gam_esgaStartAs, set a write watchpoint on it, then start a game.
         That instruction needs to be nopped.
+
+        Alternatively, search for "Content/Talos/Levels/Demo.wld",
+        then find all things that refer to it.
+
+        The one you're interested in sets 3 things near the end to 0, 0, 3.
+        The first 0 is gam_esgaStartAs.
+        The second 0 is probably custom difficulty?
+        The 3 is gam_gdDifficulty.
         """
         raise NotImplementedError()
 

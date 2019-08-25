@@ -7,27 +7,28 @@ from crobar.api import TalosVersion
 from .base import BaseTalosVersion
 
 
-class TalosVersion_v244371_linux_x86_32(BaseTalosVersion):
+class TalosVersion_v244371_windows_x86_32(BaseTalosVersion):
     @classmethod
     def get_version_identifier(cls) -> Tuple[int, bytes]:
         """Returns an (address, bytes) tuple uniquely identifying this build."""
         return (
-            0x09a7d174,
-            b"$Version: Talos_PC_distro; Talos_Executables-Linux-Final; 244371 2015-07-23 19:11:33 @builderl02; Linux-Static-Final-Default$",)
+            0x01115f38,
+            b"$Version: Talos_PC_distro; Talos-Windows-Final; 244371 2015-07-23 19:11:28 @builder14; Win32-Static-Final-Default$",)
 
     def patch_enable_esga(self) -> bool:
         """PATCH: Stops prjStartNewTalosGame() from scrubbing out the gam_esgaStartAs variable."""
         # MOV dword ptr [EStartGameAs_09e9084c],0x0
         return self.patch_memory(
-            addr=0x08b9c4a8,
-            old=bytes([0xc7, 0x05]) + self.pack_relative_addr(0x09e9084c) + bytes([0x00, 0x00, 0x00, 0x00]),
-            new=bytes([0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90]),
+            addr=0x00373a1f,
+            old=bytes([0x89, 0x35]) + self.pack_relative_addr(0x011d6d98),
+            new=bytes([0x90, 0x90, 0x90, 0x90, 0x90, 0x90]),
         )
 
     def patch_bypass_game_mode_checks_for_map_vote(self) -> bool:
         """PATCH: Allows voting for any map regardless of game mode."""
         patches_applied: List[bool] = []
 
+        raise NotImplementedError()
         patches_applied.append(self.patch_memory(
             addr=0x089387b2,
             old=bytes([0xe8, 0xd9, 0xcc, 0xc1, 0xff, 0x85, 0xc0, 0x75, 0x5d]),
@@ -45,6 +46,9 @@ class TalosVersion_v244371_linux_x86_32(BaseTalosVersion):
     def patch_crash_on_nexus_0001(self) -> bool:
         """PATCH: WIP"""
 
+        return False
+
+        raise NotImplementedError()
         return self.patch_memory(
             addr=0x08a47b15,
             old=bytes([0xe8, 0x86, 0x50, 0xa2, 0x00]),
@@ -54,6 +58,8 @@ class TalosVersion_v244371_linux_x86_32(BaseTalosVersion):
     def patch_upgrade_singleplayer(self) -> bool:
         """PATCH: Upgrade the SinglePlayer mode to a multiplayer mode."""
         patches_applied: List[bool] = []
+
+        raise NotImplementedError()
 
         game_mode_base: int
         game_mode_count: int
@@ -94,4 +100,5 @@ class TalosVersion_v244371_linux_x86_32(BaseTalosVersion):
                 new=bytes([0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00])))
 
         return any(patches_applied)
+
 

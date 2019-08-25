@@ -56,7 +56,7 @@ class LinuxDebugInterface(BaseDebugInterface):
                     self._pid: int = pid
                     return
         else:
-            raise Exception(f"Could not find Talos in the process list")
+            raise HackingOpException(f"Could not find Talos in the process list")
                     
     def _attach_to_talos(self) -> None:
         """Attempt to attach to Talos."""
@@ -118,4 +118,11 @@ class LinuxDebugInterface(BaseDebugInterface):
             self._write_word(
                 addr=addr+offs,
                 data=v)
+
+    def from_relative_addr(self, addr: int) -> int:
+        """Converts a relative-to-intended-memory-base address to an absolute address."""
+
+        # The Linux version doesn't appear to use ASLR.
+        # If I'm wrong, parse f"/proc/{self._pid:d}/maps" and infer from there.
+        return addr
 
