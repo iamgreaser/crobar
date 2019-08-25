@@ -12,7 +12,7 @@ from .v244371_windows_x86_32 import TalosVersion_v244371_windows_x86_32
 # ...and also remember to add them here too so they show up
 # Yes, for all OSes, it IS possible to debug Windows stuff on Linux and FreeBSD via Wine
 ALL_VERSIONS: Sequence[Type[TalosVersion]] = (
-    TalosVersion_v244371_linux_x86_32,
     TalosVersion_v244371_windows_x86_32,
+    TalosVersion_v244371_linux_x86_32,
 )
 

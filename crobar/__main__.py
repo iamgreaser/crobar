@@ -41,3 +41,7 @@ sys.stdout.write("\n")
 sys.stdout.write("- patch_upgrade_singleplayer: ")
 sys.stdout.write("OK" if talos_version.patch_upgrade_singleplayer() else "Already patched")
 sys.stdout.write("\n")
+
+sys.stdout.write("- patch_ignore_pure_mode: ")
+sys.stdout.write("OK" if talos_version.patch_ignore_pure_mode() else "Already patched")
+sys.stdout.write("\n")

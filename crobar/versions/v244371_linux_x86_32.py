@@ -95,3 +95,31 @@ class TalosVersion_v244371_linux_x86_32(BaseTalosVersion):
 
         return any(patches_applied)
 
+    def patch_ignore_pure_mode(self) -> bool:
+        """PATCH: Force Pure mode to accept our replacement resources."""
+        patches_applied: List[bool] = []
+
+        # Force test against 0x00:
+        # 09470de4 f6 44 24        TEST       byte ptr [ESP + param_4],0x1
+        #          7c 01
+        # 09470de9 0f 85 21        JNZ        LAB_09471110
+        #          03 00 00
+        patches_applied.append(
+            self.patch_memory(
+                addr=0x09470de4,
+                old=bytes([0xf6, 0x44, 0x24, 0x7c, 0x01, 0x0f, 0x85, 0x21, 0x03, 0x00, 0x00]),
+                new=bytes([0xf6, 0x44, 0x24, 0x7c, 0x00, 0x0f, 0x85, 0x21, 0x03, 0x00, 0x00])))
+
+        # Force test against 0x00:
+        # 09470524 f6 44 24        TEST       byte ptr [ESP + param_4],0x1
+        #          7c 01
+        # 09470529 0f 85 59        JNZ        LAB_09470888
+        #          03 00 00
+        patches_applied.append(
+            self.patch_memory(
+                addr=0x09470524,
+                old=bytes([0xf6, 0x44, 0x24, 0x7c, 0x01, 0x0f, 0x85, 0x59, 0x03, 0x00, 0x00]),
+                new=bytes([0xf6, 0x44, 0x24, 0x7c, 0x00, 0x0f, 0x85, 0x59, 0x03, 0x00, 0x00])))
+
+        return any(patches_applied)
+
