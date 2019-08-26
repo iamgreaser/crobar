@@ -210,6 +210,40 @@ class BaseTalosVersion(TalosVersion, metaclass=ABCMeta):
                     clsname = self.read_asciiz(addr=clsname_ptr)
                     print(f"- Contains class {clsname!r}")
 
+                elif typ1 == 9:
+                    # Method?
+                    if unk8 != 1:
+                        raise NotImplementedError(f"TODO: typ1={typ1} unk8!=1 ({unk8})")
+
+                    method_unk1_ptr, = struct.unpack("<I", fp.read(4))
+                    method_unk1 = self.read_asciiz(addr=method_unk1_ptr)
+                    print(f"- Method unk1 {method_unk1!r}")
+
+                    method_unk2_prefix, = struct.unpack("<I", fp.read(4))
+                    method_unk2_ptr, = struct.unpack("<I", fp.read(4))
+                    if method_unk2_prefix != 1:
+                        print(f"- Method unk2 unknown {method_unk2_prefix} {method_unk2_ptr}")
+                    else:
+                        method_unk2 = self.read_asciiz(addr=method_unk2_ptr)
+                        print(f"- Method unk2 {method_unk2!r}")
+
+                    method_arg_count, = struct.unpack("<I", fp.read(4))
+                    for method_arg_idx in range(method_arg_count):
+                        method_arg_typ_prefix, = struct.unpack("<I", fp.read(4))
+                        method_arg_typ_ptr, = struct.unpack("<I", fp.read(4))
+                        method_arg_name_ptr, = struct.unpack("<I", fp.read(4))
+                        method_arg_name = self.read_asciiz(addr=method_arg_name_ptr)
+                        method_arg_unk4, = struct.unpack("<I", fp.read(4))
+
+                        if method_arg_typ_prefix != 1:
+                            print(f"  - Method arg {method_arg_idx:d}: unhandled type {method_arg_typ_prefix}/{method_arg_typ_ptr}, {method_arg_name!r}, {method_arg_unk4}")
+                        else:
+                            method_arg_typ = self.read_asciiz(addr=method_arg_typ_ptr)
+                            print(f"  - Method arg {method_arg_idx:d}: {method_arg_typ!r} {method_arg_name!r}, {method_arg_unk4}")
+
+                    method_footer_unk1, = struct.unpack("<I", fp.read(4))
+                    print(f"- Method footer unk1 {method_footer_unk1!r}")
+
                 elif typ1 == 11:
                     # Ptr<T>
                     if unk8 != 1:
