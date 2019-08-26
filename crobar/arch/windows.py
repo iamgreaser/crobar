@@ -186,7 +186,7 @@ class WindowsDebugInterface(BaseDebugInterface):
             pointer(number_of_bytes_read_buf))
 
         if result_read == 0:
-            raise HackingOpException(f"ReadProcessMemory failed, error code {kernel32.GetLastError()}")
+            raise HackingOpException(f"ReadProcessMemory failed, error code {_kernel32.GetLastError()}")
 
         if number_of_bytes_read_buf.value == 0:
             raise HackingOpException(f"ReadProcessMemory couldn't read {length:d} bytes, it read {number_of_bytes_read_buf.value:d} bytes instead")
