@@ -106,4 +106,10 @@ class TalosVersion_v244371_windows_x86_32(BaseTalosVersion):
             new=bytes([0xeb]),
         ))
 
+        patches_applied.append(self.patch_memory(
+            addr=0x00F50DC6,
+            old=bytes([0x74]),
+            new=bytes([0xeb]),
+        ))
+
         return any(patches_applied)
