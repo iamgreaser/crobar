@@ -45,6 +45,11 @@ class TalosVersion(metaclass=ABCMeta):
         """Attempts to apply a patch at the given address."""
         raise NotImplementedError()
 
+    @abstractmethod
+    def load_all_types(self) -> None:
+        """Load all types that can be extracted from the executable."""
+        raise NotImplementedError()
+
     #
     # Patches to implement
     #

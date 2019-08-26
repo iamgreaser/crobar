@@ -15,6 +15,10 @@ class TalosVersion_v244371_linux_x86_32(BaseTalosVersion):
             0x09a7d174,
             b"$Version: Talos_PC_distro; Talos_Executables-Linux-Final; 244371 2015-07-23 19:11:33 @builderl02; Linux-Static-Final-Default$",)
 
+    def load_all_types(self) -> None:
+        """Load all types that can be extracted from the executable."""
+        self.load_types_block(addr=0x0979b3e0)
+
     def patch_enable_esga(self) -> bool:
         """PATCH: Stops prjStartNewTalosGame() from scrubbing out the gam_esgaStartAs variable."""
         # MOV dword ptr [EStartGameAs_09e9084c],0x0
@@ -59,7 +63,7 @@ class TalosVersion_v244371_linux_x86_32(BaseTalosVersion):
         game_mode_count: int
         game_mode_base, game_mode_count, = struct.unpack(
             "<II",
-            self._debug_interface.read_memory(
+            self.read_memory(
                 addr=0x09e90fb8,
                 length=0x8))
 
@@ -67,17 +71,15 @@ class TalosVersion_v244371_linux_x86_32(BaseTalosVersion):
         print(f"Game modes: {game_mode_count} @ 0x{game_mode_base:x}")
         for idx in range(game_mode_count):
             game_mode_addr: int = game_mode_base + idx*0x1B4
-            game_mode_data: bytes = self._debug_interface.read_memory(
+            game_mode_data: bytes = self.read_memory(
                 addr=game_mode_addr,
                 length=0x1B4)
 
             game_mode_name_ptr: int
             game_mode_name_ptr, = struct.unpack("<I", game_mode_data[4:4+4])
 
-            # 16 bytes should be enough to get the point across
-            game_mode_name: bytes = self._debug_interface.read_memory(
-                addr=game_mode_name_ptr,
-                length=16)
+            game_mode_name: bytes = self.read_asciiz(
+                addr=game_mode_name_ptr)
             game_mode_name = game_mode_name.partition(b"\x00")[0]
             print(f"  - {idx:2d}: {game_mode_name!r}")
             if game_mode_name == b"SinglePlayer":

@@ -24,6 +24,7 @@ for talos_version_type in ALL_VERSIONS:
 else:
     raise Exception(f"Could not identify the version of the running Talos executable")
 
+raise Exception("TODO: finish loading types")
 print("Applying patches")
 
 sys.stdout.write("- patch_enable_esga: ")
