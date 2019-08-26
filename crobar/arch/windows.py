@@ -31,6 +31,7 @@ PROCESS_VM_WRITE = 0x0020
 # doing it this way to keep mypy happy --GM
 _windll = ctypes.windll # type: ignore
 _kernel32: CDLL = _windll.kernel32
+_psapi: CDLL = _windll.psapi
 
 
 class WindowsDebugInterface(BaseDebugInterface):
@@ -72,10 +73,10 @@ class WindowsDebugInterface(BaseDebugInterface):
         # This should be large enough, hopefully
         process_list = (c_uint32 * 4096)()
         process_count_bytes = c_uint32(0)
-        did_enum: int = _kernel32.EnumProcesses(
+        did_enum: int = _psapi.EnumProcesses(
             pointer(process_list),
             c_uint32(sizeof(process_list)),
-            pointer(process_count))
+            pointer(process_count_bytes))
 
         if did_enum == 0:
             raise HackingOpException(f"EnumProcesses failed")
@@ -95,24 +96,24 @@ class WindowsDebugInterface(BaseDebugInterface):
                     | PROCESS_VM_READ
                     ),
                 c_uint32(int(False)),
-                c_uint32(self._pid))
+                c_uint32(pid))
 
             if prochandle == 0:
-                print(f"OpenProcess failed for pid {pid:d}, skipping")
+                # print(f"OpenProcess failed for pid {pid:d}, skipping")
                 continue
 
             try:
                 # Grab the first module we can.
                 module_buf = c_size_t(0)
                 module_buf_needed = c_uint32(0)
-                result_enum_modules: int = _kernel32.EnumProcessModules(
+                result_enum_modules: int = _psapi.EnumProcessModules(
                     prochandle,
                     pointer(module_buf),
                     sizeof(module_buf),
                     pointer(module_buf_needed))
 
                 if result_enum_modules == 0:
-                    print(f"EnumProcessModules failed for pid {pid:d}, skipping")
+                    # print(f"EnumProcessModules failed for pid {pid:d}, skipping")
                     continue
 
                 if module_buf_needed.value == 0:
@@ -123,8 +124,7 @@ class WindowsDebugInterface(BaseDebugInterface):
 
                 # Get the first module's name.
                 procname_buf = create_string_buffer(1024)
-                procname: bytes = procname_buf.raw.partition(b"\x00")[0]
-                result_basename: int = _kernel32.GetModuleBaseNameA(
+                result_basename: int = _psapi.GetModuleBaseNameA(
                     c_uint32(prochandle),
                     c_size_t(procmodule),
                     pointer(procname_buf),
@@ -134,7 +134,8 @@ class WindowsDebugInterface(BaseDebugInterface):
                     print(f"GetModuleBaseNameA failed for pid {pid:d}, skipping")
                     continue
 
-                if b"talos" in procname.lower() and b".exe" in procname.lower():
+                procname: bytes = procname_buf.raw.partition(b"\x00")[0]
+                if procname.lower().startswith(b"talos") and procname.lower().endswith(b".exe"):
                     print(f"{pid}: {prochandle:08X} {procmodule:016X} {procname!r}")
                     self._pid: int = pid
                     self._image_base_offset: int = procmodule - 0x00400000
@@ -178,14 +179,14 @@ class WindowsDebugInterface(BaseDebugInterface):
         result_buf = (c_byte * length)()
         number_of_bytes_read_buf = c_size_t(0)
         result_read: int = _kernel32.ReadProcessMemory(
-            c_size_t(self._process_handle),
+            c_uint32(self._process_handle),
             c_size_t(self.from_relative_addr(addr)),
             pointer(result_buf),
             c_size_t(sizeof(result_buf)),
             pointer(number_of_bytes_read_buf))
 
         if result_read == 0:
-            raise HackingOpException(f"ReadProcessMemory failed")
+            raise HackingOpException(f"ReadProcessMemory failed, error code {kernel32.GetLastError()}")
 
         if number_of_bytes_read_buf.value == 0:
             raise HackingOpException(f"ReadProcessMemory couldn't read {length:d} bytes, it read {number_of_bytes_read_buf.value:d} bytes instead")
@@ -217,5 +218,3 @@ class WindowsDebugInterface(BaseDebugInterface):
         """Converts a relative-to-intended-memory-base address to an absolute address."""
 
         return addr + self._image_base_offset
-
-

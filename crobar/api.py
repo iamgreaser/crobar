@@ -94,6 +94,7 @@ class TalosVersion(metaclass=ABCMeta):
         Then NOP out the final crashing call.
         """
         #raise NotImplementedError()
+        print("Unimplmented, not required")
         return False
 
     @abstractmethod
@@ -114,7 +115,7 @@ class TalosVersion(metaclass=ABCMeta):
         """
         raise NotImplementedError()
 
-    #@abstractmethod
+    @abstractmethod
     def patch_ignore_pure_mode(self) -> bool:
         """PATCH: Force Pure mode to accept our replacement resources.
 
@@ -122,6 +123,4 @@ class TalosVersion(metaclass=ABCMeta):
         Search for "Pure mode doesn't support replacement resources".
         Then make sure all calls which use it never happen.
         """
-        #raise NotImplementedError()
-        return False
-
+        raise NotImplementedError()
