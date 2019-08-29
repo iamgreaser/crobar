@@ -3,7 +3,6 @@ from typing import List
 from typing import Tuple
 
 from crobar.api import HackingOpException
-from crobar.api import TalosVersion
 from .base import BaseTalosVersion
 
 
@@ -92,6 +91,7 @@ class TalosVersion_v244371_windows_x86_32(BaseTalosVersion):
         return any(patches_applied)
 
     def patch_ignore_pure_mode(self) -> bool:
+        """PATCH: Force Pure mode to accept our replacement resources."""
         patches_applied: List[bool] = []
 
         patches_applied.append(self.patch_memory(
@@ -107,9 +107,26 @@ class TalosVersion_v244371_windows_x86_32(BaseTalosVersion):
         ))
 
         patches_applied.append(self.patch_memory(
-            addr=0x00F50DC6,
+            addr=0x00F50D6C,
             old=bytes([0x74]),
             new=bytes([0xeb]),
         ))
 
         return any(patches_applied)
+
+    @classmethod
+    def get_socket_creation_breakpoint_address(cls) -> int:
+        """Returns the address for a breakpoint to redirect sockets with"""
+        return 0x008fc56e
+
+    def socket_creation_callback(self, port: int) -> Tuple[str, int]:
+        """Redirects the socket to a local port and returns the intended destination"""
+
+        addr = self._debug_interface.get_register("ecx") + 0x18
+        data = self._debug_interface.read_memory(addr=addr + 1, length=6)
+        intended_port, a1,a2,a3,a4 = struct.unpack("!HBBBB", data)
+
+        repalcement = struct.pack("!HBBBB", port, 127, 0, 0, 1)
+        self._debug_interface.write_memory(addr=addr + 1, data=repalcement)
+
+        return (f"{a1}.{a2}.{a3}.{a4}", intended_port)

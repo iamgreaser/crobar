@@ -1,0 +1,26 @@
+cmd: mypy
+name: Mypy
+args:
+    - --strict
+    - --no-warn-unused-ignores
+    - crobar
+cwd: "{PROJECT_PATH}"
+sh: true
+errorMatch:
+    - '(?<file>.+?):(?<line>\\d+): (?<message>.+)'
+targets:
+    Mypy then run:
+        cmd: mypy
+        args:
+            - --strict
+            - --no-warn-unused-ignores
+            - crobar
+            - "&&"
+            - python
+            - -m
+            - crobar
+        cwd: "{PROJECT_PATH}"
+        sh: true
+        errorMatch:
+            - '(?<file>.+?):(?<line>\\d+): (?<message>.+)'
+            - '\\s+File \\"(?<file>.*)\\", line (?<line>\\d+).*?\\n(?:[\\s|\\S]+)\\n(?<message>.*rror:.*)'
