@@ -12,7 +12,7 @@ from ctypes import sizeof
 from ctypes import Structure
 from typing import Optional
 
-from crobar.arch.base import BaseDebugInterface
+from .base import BaseDebugInterface
 from crobar.api import HackingOpException
 
 # NOTE: Windows Vista and upwards supports PROCESS_QUERY_LIMITED_INFORMATION.
@@ -262,7 +262,7 @@ class WindowsDebugInterface(BaseDebugInterface):
                 if error == ERROR_SEM_TIMEOUT:
                     continue
 
-                raise HackingOpException(f"WaitForDebugEvent failed {_kernel32.GetLastError()}")
+                raise HackingOpException("WaitForDebugEvent failed")
 
             event_code = debug_event[0]
             pid = debug_event[1]
@@ -296,7 +296,7 @@ class WindowsDebugInterface(BaseDebugInterface):
 
     def _ensure_context_loaded(self) -> None:
         """Gets the 'CONTEXT' object that holds information about all registers."""
-        if self._current_context != None:
+        if self._current_context is None:
             return
 
         if self._stopped_thread_handle == 0:
@@ -309,6 +309,7 @@ class WindowsDebugInterface(BaseDebugInterface):
                 raise HackingOpException("Unable to get thread handle")
 
         context = _CONTEXT()
+        context.ContextFlags = CONTEXT_ALL
 
         got_context = _kernel32.GetThreadContext(self._stopped_thread_handle, context)
         if got_context == 0:
@@ -326,7 +327,7 @@ class WindowsDebugInterface(BaseDebugInterface):
 
         self._ensure_context_loaded()
 
-        return getattr(self._current_context, register) # type: ignore
+        return getattr(self._current_context, register)  # type: ignore
 
     def set_register(self, register: str, value: int) -> None:
         """Sets the value of the specified register."""

@@ -46,21 +46,11 @@ sys.stdout.write("- patch_ignore_pure_mode: ")
 sys.stdout.write("OK" if talos_version.patch_ignore_pure_mode() else "Already patched")
 sys.stdout.write("\n")
 
-# TODO: write a proxy and add it here
-def prepareThread() -> None:
-    actual_port = 44444
-    # actual_port = startProxy()
-
-    ip, intended_port = talos_version.socket_creation_callback(actual_port)
-
-    # forwardTo(ip, intended_port)
-
-    print(f"Intended socket destination: {ip}:{intended_port}")
 
 bh = BreakpointHandler(debug_interface)
 bh.add_breakpoint(
-    talos_version.get_socket_creation_breakpoint_address(),
-    prepareThread
+    0x00773a1f,
+    lambda: print("breakpoint")
 )
 # TODO: work out mystery exit during this call
 bh._wait()

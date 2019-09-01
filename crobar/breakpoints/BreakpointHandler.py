@@ -8,6 +8,7 @@ from .Breakpoint import Breakpoint
 INT3_OPCODE = b"\xCC"
 TRAP_FLAG = 0x0100
 
+
 class BreakpointHandler:
     __slots__ = (
         "_debug_interface",
