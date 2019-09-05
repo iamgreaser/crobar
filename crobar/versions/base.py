@@ -22,7 +22,7 @@ class MemoryReadIO(IOBase):
         self._addr = addr
         self._debug_interface = debug_interface
 
-    def read(self, length: Optional[int]=None) -> bytes:
+    def read(self, length: Optional[int] = None) -> bytes:
         if length is not None:
             result: bytes = self._debug_interface.read_memory(addr=self._addr, length=length)
             self._addr += length
@@ -100,7 +100,25 @@ class BaseTalosVersion(TalosVersion, metaclass=ABCMeta):
 
     def load_all_types(self) -> None:
         """Load all types that can be extracted from the executable."""
-        pass
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_method_table_address(self) -> int:
+        """A table that some method declarations have references into
+        The exact purpose of the table and references is unknown
+
+        Address Hunting Advice:
+        Look for the string "Unknown declaration type encountered in declaration data.\n"
+
+        Check it's references, it should be passed to a logging function if a var is not 1 or 2.
+        Follow the function that is run if the var is 2
+
+        Near the bottom of this function there's a comparison against 1. If it is not 1 then a var
+        is set to the pointer [constant address] + [different var] * 4
+
+        This address is the value we want
+        """
+        raise NotImplementedError()
 
     def load_types_block(self, *, addr: int) -> None:
         """Load types from a given block in the executable."""
@@ -127,7 +145,8 @@ class BaseTalosVersion(TalosVersion, metaclass=ABCMeta):
                 unk7: int
                 unk8: int
                 typ1, typ2, typname_ptr, unk4, length_in_bytes, unk6, unk7, unk8, = (
-                    struct.unpack("<IIIIIIII", fp.read(32)))
+                    struct.unpack("<IIIIIIII", fp.read(32))
+                )
 
                 typname: bytes = self.read_asciiz(addr=typname_ptr)
                 print(f"Type: {typ0} {typ1} {typ2} {typname!r} {unk4} {length_in_bytes} {unk6} {unk7} {unk8}")
@@ -142,16 +161,17 @@ class BaseTalosVersion(TalosVersion, metaclass=ABCMeta):
                         field_value: int
                         field_name_ptr: int
                         field_desc_ptr: int
-                        field_value, field_name_ptr, field_desc_ptr, = struct.unpack("<III",
-                            fp.read(12))
+                        field_value, field_name_ptr, field_desc_ptr, = struct.unpack(
+                            "<III",
+                            fp.read(12)
+                        )
 
                         field_name: bytes = self.read_asciiz(addr=field_name_ptr)
                         field_desc: bytes = self.read_asciiz(addr=field_desc_ptr)
                         print(f"  - {field_name!r} = {field_value!r} // {field_desc!r}")
 
                     enum_unk_footer1_ptr: int
-                    enum_unk_footer1_ptr, = struct.unpack("<I",
-                        fp.read(4))
+                    enum_unk_footer1_ptr, = struct.unpack("<I", fp.read(4))
 
                     print(f"- Enum unk footer1 ptr: {enum_unk_footer1_ptr}")
 
@@ -193,8 +213,8 @@ class BaseTalosVersion(TalosVersion, metaclass=ABCMeta):
                     # CStaticStackArray<T>
                     if unk8 != 1:
                         unk9_ref, = struct.unpack("<I", fp.read(4))
-                        #unk9_ptr, = struct.unpack("<I", self.read_memory(addr=0x0a1f26a4+4*unk9_ref, length=4))
-                        #print(f"- Stack array w/ unknown reference {unk9_ref!r} {unk9_ptr:08X}")
+                        # unk9_ptr, = struct.unpack("<I", self.read_memory(addr=0x0a1f26a4+4*unk9_ref, length=4))
+                        # print(f"- Stack array w/ unknown reference {unk9_ref!r} {unk9_ptr:08X}")
                         print(f"- Stack array w/ unknown reference {unk9_ref!r}")
                     else:
                         clsname_ptr, = struct.unpack("<I", fp.read(4))
@@ -280,13 +300,40 @@ class BaseTalosVersion(TalosVersion, metaclass=ABCMeta):
                         print(f"  - Entry mask {entry_mask:08X} function 0x{entry_ptr:x}")
 
                     unk_footer1_ptr: int
-                    unk_footer1_ptr, = struct.unpack("<I",
-                        fp.read(4))
+                    unk_footer1_ptr, = struct.unpack("<I", fp.read(4))
 
                     print(f"- Unk footer1 ptr: {unk_footer1_ptr}")
 
                 else:
                     raise NotImplementedError(f"unhandled typ1 {typ1!r}")
-            else:
-                raise NotImplementedError(f"unhandled typ0 {typ0:08X}")
 
+            elif typ0 == 2:
+                print("Type: 2")
+                str1_ptr: int
+                str2_ptr: int
+                data: int
+                type_or_index: int
+                type_index_val: int
+                flags: int
+                null: int
+                str1_ptr, str2_ptr, data, type_or_index, type_index_val, flags, null = (
+                    struct.unpack("<IIIIIII", fp.read(28))
+                )
+
+                str1: bytes = self.read_asciiz(addr=str1_ptr)
+                str2: bytes = self.read_asciiz(addr=str2_ptr)
+                print(f"- {str1} -> {str2}")
+
+                if type_or_index == 1:
+                    str_type: bytes = self.read_asciiz(addr=type_index_val)
+                    print(f"- Var Type: {str_type}, Data: {data:08x}")
+
+                else:
+                    method_table: int = self.get_method_table_address() + 4 * type_index_val
+                    method_table_data = self._debug_interface.read_memory(addr=method_table, length=4)
+                    print(f"- Method Table Data: {method_table_data.hex()}, Raw Data: {data:08x}")
+
+                print(f"- Flags: {flags:08x}, Null: {null}")
+
+            else:
+                raise NotImplementedError(f"Invalid typ0 {typ0:08X}")

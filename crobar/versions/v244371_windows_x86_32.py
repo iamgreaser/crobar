@@ -3,7 +3,6 @@ from typing import List
 from typing import Tuple
 
 from crobar.api import HackingOpException
-from crobar.api import TalosVersion
 from .base import BaseTalosVersion
 
 
@@ -14,6 +13,13 @@ class TalosVersion_v244371_windows_x86_32(BaseTalosVersion):
         return (
             0x01515f38,
             b"$Version: Talos_PC_distro; Talos-Windows-Final; 244371 2015-07-23 19:11:28 @builder14; Win32-Static-Final-Default$",)
+
+    def load_all_types(self) -> None:
+        """Load all types that can be extracted from the executable."""
+        self.load_types_block(addr=0x011252d8)
+
+    def get_method_table_address(self) -> int:
+        return 0x015a711a
 
     def patch_enable_esga(self) -> bool:
         """PATCH: Stops prjStartNewTalosGame() from scrubbing out the gam_esgaStartAs variable."""
@@ -107,7 +113,7 @@ class TalosVersion_v244371_windows_x86_32(BaseTalosVersion):
         ))
 
         patches_applied.append(self.patch_memory(
-            addr=0x00F50DC6,
+            addr=0x00F50D6C,
             old=bytes([0x74]),
             new=bytes([0xeb]),
         ))
