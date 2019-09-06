@@ -53,7 +53,7 @@ class BreakpointHandler:
     # TODO: Thread this
     def _wait(self) -> None:
         while True:
-            addr = self._debug_interface.wait_for_breakpoint()
+            addr, is_single_step = self._debug_interface.wait_for_breakpoint()
             if addr in self._current_breakpoints:
                 bp = self._current_breakpoints[addr]
                 print(f"Breakpoint: {addr:08X}")
@@ -61,7 +61,7 @@ class BreakpointHandler:
                 if bp.state == Breakpoint.STATE_INACTIVE:
                     raise HackingOpException("Inactive breakpoint was triggered")
 
-                elif bp.state == Breakpoint.STATE_ACTIVE:
+                elif bp.state == Breakpoint.STATE_ACTIVE and not is_single_step:
                     # Add the trap flag so that we break again on the next instruction
                     eflags = self._debug_interface.get_register("EFlags")
                     eflags |= TRAP_FLAG
@@ -73,12 +73,15 @@ class BreakpointHandler:
 
                     bp.callback()
 
-                elif bp.state == Breakpoint.STATE_WAITING_STEP:
+                elif bp.state == Breakpoint.STATE_WAITING_STEP and is_single_step:
                     # Remove the trap flag and replace the instruction with an int3 again
                     eflags = self._debug_interface.get_register("EFlags")
                     eflags &= (TRAP_FLAG ^ 0xFFFFFFFF)
                     self._debug_interface.set_register("EFlags", eflags)
                     bp.state = Breakpoint.STATE_ACTIVE
                     self._debug_interface.write_memory(addr=bp.addr, data=INT3_OPCODE)
+
+                else:
+                    raise HackingOpException("Breakpoint state desynced")
 
             self._debug_interface.resume_from_breakpoint()

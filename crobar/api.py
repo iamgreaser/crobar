@@ -27,15 +27,16 @@ class DebugInterface(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def wait_for_breakpoint(self) -> int:
+    def wait_for_breakpoint(self) -> Tuple[int, bool]:
         """Waits for a breakpoint to be hit in the Talos process.
 
-        Should accept all breakpoint and single step exceptions and return the
-        address they were hit on.
+        Should accept all breakpoint and single step exceptions
+
+        Returns the address the program stopped on and if it was a single step exception
         """
         # raise NotImplementedError()
         print("Unimplmented, not required")
-        return 0
+        return 0, False
 
     @abstractmethod
     def resume_from_breakpoint(self) -> None:
@@ -154,36 +155,3 @@ class TalosVersion(metaclass=ABCMeta):
         Then make sure all calls which use it never happen.
         """
         raise NotImplementedError()
-
-    #
-    # Breakpoints and callback methods
-    #
-
-    @classmethod
-    @abstractmethod
-    def get_socket_creation_breakpoint_address(cls) -> int:
-        """Returns the address for a breakpoint to redirect sockets with
-
-        Address-hunting advice:
-        Search for "Failed to create socket."
-
-        You should end up in large function with other many other strings
-        referencing sockets.
-
-        Shortly after that error it should call the connect function, though
-        it may go through simple wrapper.
-
-        Breakpoint right before this function gets called
-
-        Alternatively, start at the system level socket functions and work up
-        """
-        # raise NotImplementedError()
-        print("Unimplmented, not required")
-        return False
-
-    @abstractmethod
-    def socket_creation_callback(self, port: int) -> Tuple[str, int]:
-        """Redirects the socket to a local port and returns the intended destination"""
-        # raise NotImplementedError()
-        print("Unimplmented, not required")
-        return ("0.0.0.0", 0)

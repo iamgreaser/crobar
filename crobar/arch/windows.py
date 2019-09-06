@@ -1,16 +1,21 @@
 """Windows-specific debugging/hacking interface."""
 import ctypes
 from ctypes import CDLL
-from ctypes import c_byte
-from ctypes import c_uint32
-from ctypes import c_size_t
-from ctypes import create_string_buffer
-# Why do these two work differently :|
-from ctypes import pointer
+from ctypes.wintypes import BOOL
+from ctypes.wintypes import BYTE
+from ctypes.wintypes import DWORD
+from ctypes.wintypes import HANDLE
+from ctypes.wintypes import HMODULE
+from ctypes.wintypes import LPVOID
+from ctypes.wintypes import LPWSTR
 from ctypes import POINTER
+from ctypes import c_size_t as SIZE_T
+from ctypes import byref
+from ctypes import create_string_buffer
 from ctypes import sizeof
 from ctypes import Structure
 from typing import Optional
+from typing import Tuple
 
 from .base import BaseDebugInterface
 from crobar.api import HackingOpException
@@ -36,10 +41,41 @@ DBG_CONTINUE = 0x00010002
 
 CONTEXT_ALL = 0x0001003F
 
+ERROR_MESSAGE_FORMAT = 0x1300
+ERROR_MESSAGE_LANG_ID = 0x0400
+
 # doing it this way to keep mypy happy --GM
 _windll = ctypes.windll  # type: ignore
 _kernel32: CDLL = _windll.kernel32
 _psapi: CDLL = _windll.psapi
+
+
+class WindowsHackingException(HackingOpException):
+    __slots__ = ()
+
+    def __str__(self) -> str:
+        message: str = super().__str__()
+
+        code: int = _kernel32.GetLastError()
+        if code == 0:
+            return message
+
+        error_buf = LPWSTR()
+        length = _kernel32.FormatMessageW(
+            ERROR_MESSAGE_FORMAT,
+            None,
+            code,
+            ERROR_MESSAGE_LANG_ID,
+            byref(error_buf),
+            0,
+            None
+        )
+
+        if error_buf.value is None or length == 0:
+            return message
+        error = error_buf.value[:length]
+
+        return f"{message}\nError {code}: {error}"
 
 
 class WindowsDebugInterface(BaseDebugInterface):
@@ -54,13 +90,13 @@ class WindowsDebugInterface(BaseDebugInterface):
     )
 
     def __init__(self) -> None:
-        self._find_talos()
-        self._attach_to_talos()
-
         self._is_debugger_attached: bool = False
         self._stopped_thread_id: int = 0
         self._stopped_thread_handle: int = 0
-        self._current_context: Optional[_CONTEXT] = None
+        self._current_context: Optional[_WOW64_CONTEXT] = None
+
+        self._find_talos()
+        self._attach_to_talos()
 
     def __del__(self) -> None:
         print(f"Deleting {self!r}")
@@ -70,7 +106,7 @@ class WindowsDebugInterface(BaseDebugInterface):
             self.resume_from_breakpoint()
 
         if self._is_debugger_attached:
-            _kernel32.DebugActiveProcessStop(c_uint32(self._pid))
+            _kernel32.DebugActiveProcessStop(DWORD(self._pid))
 
         result_close: int = _kernel32.CloseHandle(self._process_handle)
         print(f"Closed: {result_close}")
@@ -80,7 +116,7 @@ class WindowsDebugInterface(BaseDebugInterface):
 
         # I forgot how terrible this was on Windows.
         #
-        # Here's how it works according to what I could scrape on MSDN.
+        # Here's how it works:
         # - Call EnumProcesses() to get a list of process IDs.
         # - For every process:
         #   - Call OpenProcess() to attach to the process.
@@ -88,25 +124,21 @@ class WindowsDebugInterface(BaseDebugInterface):
         #   - If the module could be found at all:
         #     - Call GetModuleBaseNameA() on that module.
         #   - Call CloseHandle().
-        #
-        # Windows XP added some fun where you had to get your process security right,
-        # and I think Wine straight up doesn't emulate this.
-        # Then again, ovl075 was a thing, so I've definitely had it working on official Windows.
-        # I don't quite recall how to get that garbage working.
 
         # Fetch all processes.
         # This should be large enough, hopefully
-        process_list = (c_uint32 * 4096)()
-        process_count_bytes = c_uint32(0)
+        process_list = (DWORD * 4096)()
+        process_count_bytes = DWORD(0)
         did_enum: int = _psapi.EnumProcesses(
-            pointer(process_list),
-            c_uint32(sizeof(process_list)),
-            pointer(process_count_bytes))
+            byref(process_list),
+            DWORD(sizeof(process_list)),
+            byref(process_count_bytes)
+        )
 
         if did_enum == 0:
-            raise HackingOpException(f"EnumProcesses failed")
+            raise WindowsHackingException("EnumProcesses failed")
 
-        process_count: int = process_count_bytes.value // sizeof(c_uint32)
+        process_count: int = process_count_bytes.value // sizeof(DWORD)
 
         if process_count > len(process_list):
             raise HackingOpException(f"EnumProcesses process count overflowed: {process_count:d} > {len(process_list):d}")
@@ -115,103 +147,95 @@ class WindowsDebugInterface(BaseDebugInterface):
             pid: int = process_list[pid_idx]
 
             # Open the process.
-            prochandle: int = _kernel32.OpenProcess(
-                c_uint32(0
-                         | PROCESS_QUERY_INFORMATION
-                         | PROCESS_VM_READ
-                         ),
-                c_uint32(int(False)),
-                c_uint32(pid))
+            prochandle: HANDLE = _kernel32.OpenProcess(
+                DWORD(
+                    PROCESS_QUERY_INFORMATION
+                    | PROCESS_VM_READ
+                ),
+                BOOL(False),
+                DWORD(pid)
+            )
 
-            if prochandle == 0:
-                # print(f"OpenProcess failed for pid {pid:d}, skipping")
+            if prochandle == 0:  # type: ignore
+                # OpenProcess failed - this happens plenty when we don't have permission
                 continue
 
             try:
                 # Grab the first module we can.
-                module_buf = c_size_t(0)
-                module_buf_needed = c_uint32(0)
+                first_module = HMODULE()
+                module_buf_needed = DWORD()
                 result_enum_modules: int = _psapi.EnumProcessModules(
                     prochandle,
-                    pointer(module_buf),
-                    sizeof(module_buf),
-                    pointer(module_buf_needed))
+                    byref(first_module),
+                    DWORD(sizeof(first_module)),
+                    byref(module_buf_needed)
+                )
 
                 if result_enum_modules == 0:
-                    # print(f"EnumProcessModules failed for pid {pid:d}, skipping")
+                    # This fails occasionally with an ERROR_PARTIAL_COPY, though it fails on Talos
                     continue
 
-                if module_buf_needed.value == 0:
+                if module_buf_needed.value == 0 or first_module.value is None:
                     print(f"EnumProcessModules yielded no modules for pid {pid:d}, skipping")
                     continue
 
-                procmodule: int = module_buf.value
-
                 # Get the first module's name.
                 procname_buf = create_string_buffer(1024)
-                result_basename: int = _psapi.GetModuleBaseNameA(
-                    c_uint32(prochandle),
-                    c_size_t(procmodule),
-                    pointer(procname_buf),
-                    sizeof(procname_buf))
+                basename_length: int = _psapi.GetModuleBaseNameA(
+                    prochandle,
+                    first_module,
+                    byref(procname_buf),
+                    DWORD(sizeof(procname_buf))
+                )
 
-                if result_basename == 0:
+                if basename_length == 0:
                     print(f"GetModuleBaseNameA failed for pid {pid:d}, skipping")
                     continue
 
-                procname: bytes = procname_buf.raw.partition(b"\x00")[0]
+                procname: bytes = procname_buf.raw[:basename_length]
                 if procname.lower().startswith(b"talos") and procname.lower().endswith(b".exe"):
-                    print(f"{pid}: {prochandle:08X} {procmodule:016X} {procname!r}")
+                    print(f"{pid}: {prochandle:08X} {first_module.value:016X} {procname!r}")
                     self._pid: int = pid
-                    self._image_base_offset: int = procmodule - 0x00400000
+                    self._image_base_offset: int = first_module.value - 0x00400000
                     return
             finally:
                 result_close: int = _kernel32.CloseHandle(prochandle)
                 if result_close == 0:
-                    raise HackingOpException(f"CloseHandle failed for pid {pid:d}")
+                    raise WindowsHackingException(f"CloseHandle failed for pid {pid:d}")
         else:
-            raise HackingOpException(f"Could not find Talos in the process list")
+            raise HackingOpException("Could not find Talos in the process list")
 
     def _attach_to_talos(self) -> None:
         """Attempt to attach to Talos."""
 
         self._process_handle: int = _kernel32.OpenProcess(
-            c_uint32(0
-                     | PROCESS_VM_OPERATION
-                     | PROCESS_VM_READ
-                     | PROCESS_VM_WRITE
-                     ),
-            c_uint32(int(False)),
-            c_uint32(self._pid))
+            DWORD(
+                PROCESS_VM_OPERATION
+                | PROCESS_VM_READ
+                | PROCESS_VM_WRITE
+            ),
+            BOOL(False),
+            DWORD(self._pid)
+        )
 
         if self._process_handle == 0:
-            raise HackingOpException(f"OpenProcess failed")
+            raise WindowsHackingException("OpenProcess failed")
 
     def read_memory(self, *, addr: int, length: int) -> bytes:
         """Read memory from the attached process."""
 
-        # On the other hand, the Windows interface for actually hacking stuff is nice.
-        #
-        # Dammit Linux, why don't you just allow mmap() against f"/proc/{pid:d}/mem"?
-        # That would be *logical*... but noooo, we have to do this clunky ptrace() shit,
-        # where we have to poke a whole "word", where the man page doesn't even define
-        # what a fucking word is.
-        #
-        # It turns out that a "word" is probably the width of a pointer.
-        #
-        # THANKS SUN YOUR INTERFACE TOTALLY DOESN'T FUCKING SUCK BALLS
-
-        result_buf = (c_byte * length)()
-        number_of_bytes_read_buf = c_size_t(0)
+        result_buf = (BYTE * length)()
+        number_of_bytes_read_buf = SIZE_T()
         result_read: int = _kernel32.ReadProcessMemory(
-            c_uint32(self._process_handle),
-            c_size_t(self.from_relative_addr(addr)),
-            pointer(result_buf),
-            c_size_t(sizeof(result_buf)),
-            pointer(number_of_bytes_read_buf))
+            HANDLE(self._process_handle),
+            LPVOID(self.from_relative_addr(addr)),
+            byref(result_buf),
+            SIZE_T(sizeof(result_buf)),
+            byref(number_of_bytes_read_buf)
+        )
 
         if result_read == 0:
-            raise HackingOpException(f"ReadProcessMemory failed, error code {_kernel32.GetLastError()}")
+            raise WindowsHackingException("ReadProcessMemory failed")
 
         if number_of_bytes_read_buf.value == 0:
             raise HackingOpException(f"ReadProcessMemory couldn't read {length:d} bytes, it read {number_of_bytes_read_buf.value:d} bytes instead")
@@ -222,39 +246,40 @@ class WindowsDebugInterface(BaseDebugInterface):
         """Write memory to the attached process."""
 
         # This approach is kinda disgusting to be honest...
-        result_buf = (c_byte * len(data))(*data)
+        result_buf = (BYTE * len(data))(*data)
 
-        number_of_bytes_written_buf = c_size_t(0)
+        number_of_bytes_written_buf = SIZE_T()
         result_read: int = _kernel32.WriteProcessMemory(
-            c_size_t(self._process_handle),
-            c_size_t(self.from_relative_addr(addr)),
-            pointer(result_buf),
-            c_size_t(sizeof(result_buf)),
-            pointer(number_of_bytes_written_buf))
+            HANDLE(self._process_handle),
+            LPVOID(self.from_relative_addr(addr)),
+            byref(result_buf),
+            SIZE_T(sizeof(result_buf)),
+            byref(number_of_bytes_written_buf)
+        )
 
         if result_read == 0:
-            raise HackingOpException(f"WriteProcessMemory failed")
+            raise WindowsHackingException("WriteProcessMemory failed")
 
         if number_of_bytes_written_buf.value == 0:
-            raise HackingOpException(f"WriteProcessMemory couldn't write {len(data):d} bytes, it wrote {number_of_bytes_written_buf.value:d} bytes instead")
+            raise HackingOpException("WriteProcessMemory couldn't write {len(data):d} bytes, it wrote {number_of_bytes_written_buf.value:d} bytes instead")
 
     def from_relative_addr(self, addr: int) -> int:
         """Converts a relative-to-intended-memory-base address to an absolute address."""
         return addr + self._image_base_offset
 
-    def wait_for_breakpoint(self) -> int:
+    def wait_for_breakpoint(self) -> Tuple[int, bool]:
         """Waits for a breakpoint to be hit in the Talos process."""
 
         if not self._is_debugger_attached:
             _kernel32.DebugActiveProcess(self._pid)
-            _kernel32.DebugSetProcessKillOnExit(c_uint32(0))
+            _kernel32.DebugSetProcessKillOnExit(BOOL(False))
             self._is_debugger_attached = True
 
         # We may get unrelated events before a breakpoint so we have to loop
         while True:
             # Big enough for all the bytes we want, even though more are returned
             # TODO: different order in 64 bit python?
-            debug_event = (c_uint32 * 7)()
+            debug_event = (DWORD * 7)()
 
             wait_succeeded = _kernel32.WaitForDebugEvent(debug_event, 1000)
             if wait_succeeded == 0:
@@ -262,7 +287,7 @@ class WindowsDebugInterface(BaseDebugInterface):
                 if error == ERROR_SEM_TIMEOUT:
                     continue
 
-                raise HackingOpException("WaitForDebugEvent failed")
+                raise WindowsHackingException("WaitForDebugEvent failed")
 
             event_code = debug_event[0]
             pid = debug_event[1]
@@ -276,7 +301,7 @@ class WindowsDebugInterface(BaseDebugInterface):
             exception_code = debug_event[3]
             if exception_code == EXCEPTION_BREAKPOINT or exception_code == EXCEPTION_SINGLE_STEP:
                 addr = debug_event[6]
-                return addr
+                return addr, exception_code == EXCEPTION_SINGLE_STEP
 
             self.resume_from_breakpoint()
 
@@ -287,7 +312,7 @@ class WindowsDebugInterface(BaseDebugInterface):
 
         continued = _kernel32.ContinueDebugEvent(self._pid, self._stopped_thread_id, DBG_CONTINUE)
         if continued == 0:
-            raise HackingOpException("ContinueDebugEvent failed")
+            raise WindowsHackingException("ContinueDebugEvent failed")
 
         # Clear our "stopped-only" vars
         self._stopped_thread_id = 0
@@ -306,14 +331,14 @@ class WindowsDebugInterface(BaseDebugInterface):
                 self._stopped_thread_id
             )
             if self._stopped_thread_handle == 0:
-                raise HackingOpException("Unable to get thread handle")
+                raise WindowsHackingException("Unable to get thread handle")
 
-        context = _CONTEXT()
+        context = _WOW64_CONTEXT()
         context.ContextFlags = CONTEXT_ALL
 
         got_context = _kernel32.GetThreadContext(self._stopped_thread_handle, context)
         if got_context == 0:
-            raise HackingOpException("GetThreadContext failed")
+            raise WindowsHackingException("GetThreadContext failed")
 
         self._current_context = context
 
@@ -322,7 +347,7 @@ class WindowsDebugInterface(BaseDebugInterface):
         if self._stopped_thread_id == 0:
             raise HackingOpException("No thread is currently stopped")
 
-        if register not in _CONTEXT.__dict__:
+        if register not in _WOW64_CONTEXT.__dict__:
             raise HackingOpException(f"Unsupported register: {register}")
 
         self._ensure_context_loaded()
@@ -334,7 +359,7 @@ class WindowsDebugInterface(BaseDebugInterface):
         if self._stopped_thread_id == 0:
             raise HackingOpException("No thread is currently stopped")
 
-        if register not in _CONTEXT.__dict__:
+        if register not in _WOW64_CONTEXT.__dict__:
             raise HackingOpException(f"Unsupported register: {register}")
 
         self._ensure_context_loaded()
@@ -342,45 +367,45 @@ class WindowsDebugInterface(BaseDebugInterface):
 
         set_context = _kernel32.SetThreadContext(self._stopped_thread_handle, self._current_context)
         if set_context == 0:
-            raise HackingOpException("SetThreadContext failed")
+            raise WindowsHackingException("SetThreadContext failed")
 
 
 # TODO: Probably changes with 64 bit
-class _CONTEXT(Structure):
+class _WOW64_CONTEXT(Structure):
     _fields_ = [
-        ('ContextFlags', c_uint32),
-        ('dr0', c_uint32),
-        ('dr1', c_uint32),
-        ('dr2', c_uint32),
-        ('dr3', c_uint32),
-        ('dr4', c_uint32),
-        ('dr5', c_uint32),
-        ('dr6', c_uint32),
-        ('dr7', c_uint32),
-        ('ControlWord', c_uint32),
-        ('StatusWord', c_uint32),
-        ('TagWord', c_uint32),
-        ('ErrorOffset', c_uint32),
-        ('ErrorSelector', c_uint32),
-        ('DataOffset', c_uint32),
-        ('DataSelector', c_uint32),
-        ('RegisterArea', POINTER(c_byte)),
-        ('Cr0NpxState', c_uint32),
-        ('SegGs', c_uint32),
-        ('SegFs', c_uint32),
-        ('SegEs', c_uint32),
-        ('SegDs', c_uint32),
-        ('edi', c_uint32),
-        ('esi', c_uint32),
-        ('ebx', c_uint32),
-        ('edx', c_uint32),
-        ('ecx', c_uint32),
-        ('eax', c_uint32),
-        ('ebp', c_uint32),
-        ('eip', c_uint32),
-        ('SegCs', c_uint32),
-        ('EFlags', c_uint32),
-        ('Esp', c_uint32),
-        ('SegSs', c_uint32),
-        ('ExtendedRegisters', POINTER(c_byte)),
+        ('ContextFlags', DWORD),
+        ('dr0', DWORD),
+        ('dr1', DWORD),
+        ('dr2', DWORD),
+        ('dr3', DWORD),
+        ('dr4', DWORD),
+        ('dr5', DWORD),
+        ('dr6', DWORD),
+        ('dr7', DWORD),
+        ('ControlWord', DWORD),
+        ('StatusWord', DWORD),
+        ('TagWord', DWORD),
+        ('ErrorOffset', DWORD),
+        ('ErrorSelector', DWORD),
+        ('DataOffset', DWORD),
+        ('DataSelector', DWORD),
+        ('RegisterArea', POINTER(BYTE)),
+        ('Cr0NpxState', DWORD),
+        ('SegGs', DWORD),
+        ('SegFs', DWORD),
+        ('SegEs', DWORD),
+        ('SegDs', DWORD),
+        ('edi', DWORD),
+        ('esi', DWORD),
+        ('ebx', DWORD),
+        ('edx', DWORD),
+        ('ecx', DWORD),
+        ('eax', DWORD),
+        ('ebp', DWORD),
+        ('eip', DWORD),
+        ('SegCs', DWORD),
+        ('EFlags', DWORD),
+        ('Esp', DWORD),
+        ('SegSs', DWORD),
+        ('ExtendedRegisters', POINTER(BYTE)),
     ]
