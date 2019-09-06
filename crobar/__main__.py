@@ -49,8 +49,14 @@ sys.stdout.write("\n")
 
 bh = BreakpointHandler(debug_interface)
 bh.add_breakpoint(
-    0x00773a1f,
-    lambda: print("breakpoint")
+    0x00773a1e,
+    lambda: print(f"eip: {debug_interface.get_registers().rip:08X}"),
+    "BP Testing 1"
+)
+bh.add_breakpoint(
+    0x00773a1e,
+    lambda: print(f"eax: {debug_interface.get_registers().rax:08X}"),
+    "BP Testing 2"
 )
 # TODO: work out mystery exit during this call
 bh._wait()

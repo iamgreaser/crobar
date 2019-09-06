@@ -1,6 +1,7 @@
 from abc import ABCMeta
 from abc import abstractmethod
 from typing import Tuple
+from .arch.registers import Registers
 
 
 class HackingOpException(Exception):
@@ -27,35 +28,34 @@ class DebugInterface(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
+    def attach_debugger(self) -> None:
+        """Sets up the debugger so that breakpoints can safely be hit without the game crashing."""
+        raise NotImplementedError()
+
+    @abstractmethod
     def wait_for_breakpoint(self) -> Tuple[int, bool]:
         """Waits for a breakpoint to be hit in the Talos process.
 
         Should accept all breakpoint and single step exceptions
 
-        Returns the address the program stopped on and if it was a single step exception
+        Returns the address the program stopped on and if it was a breakpoint exception
         """
-        # raise NotImplementedError()
-        print("Unimplmented, not required")
-        return 0, False
+        raise NotImplementedError()
 
     @abstractmethod
     def resume_from_breakpoint(self) -> None:
         """Resumes the talos process after a breakpoint."""
-        # raise NotImplementedError()
-        print("Unimplmented, not required")
+        raise NotImplementedError()
 
     @abstractmethod
-    def get_register(self, register: str) -> int:
-        """Returns the contents of the specified register."""
-        # raise NotImplementedError()
-        print("Unimplmented, not required")
-        return 0
+    def get_registers(self) -> Registers:
+        """Returns a dataclass with contents of various registers."""
+        raise NotImplementedError()
 
     @abstractmethod
-    def set_register(self, register: str, value: int) -> None:
-        """Sets the value of the specified register."""
-        # raise NotImplementedError()
-        print("Unimplmented, not required")
+    def set_registers(self, registers: Registers) -> None:
+        """Sets all registers to the values contained in the provided dataclass."""
+        raise NotImplementedError()
 
 
 class TalosVersion(metaclass=ABCMeta):

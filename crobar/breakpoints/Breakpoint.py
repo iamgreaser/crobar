@@ -1,20 +1,18 @@
 from typing import Callable
+from typing import Optional
+from dataclasses import dataclass
+from dataclasses import field
 
 
+@dataclass(unsafe_hash=True)
 class Breakpoint:
-    __slots__ = (
-        "addr",
-        "callback",
-        "old_byte",
-        "state",
-    )
+    class State:
+        INACTIVE = 0
+        ACTIVE = 1
+        WAITING_STEP = 2
 
-    STATE_INACTIVE = 0
-    STATE_ACTIVE = 1
-    STATE_WAITING_STEP = 2
-
-    def __init__(self, addr: int, callback: Callable[[], None], old_byte: bytes):
-        self.addr = addr
-        self.old_byte = old_byte
-        self.callback = callback
-        self.state = Breakpoint.STATE_INACTIVE
+    addr: int
+    callback: Callable[[], None]
+    old_byte: bytes
+    name: Optional[str] = None
+    state: int = field(default=State.INACTIVE, compare=False)
