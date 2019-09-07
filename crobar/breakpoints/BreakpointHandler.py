@@ -90,6 +90,7 @@ class BreakpointHandler:
             addr, is_breakpoint = self._debug_interface.wait_for_breakpoint()
 
             if is_breakpoint:
+                edit_once = True
                 for bp in self._current_breakpoints:
                     if addr != bp.addr:
                         continue
@@ -100,34 +101,43 @@ class BreakpointHandler:
                         self._debug_interface.resume_from_breakpoint()
                         raise HackingOpException("Inactive breakpoint was triggered")
 
-                    # Add the trap flag so that we break again on the next instruction
-                    registers = self._debug_interface.get_registers()
-                    registers.eflags |= TRAP_FLAG
-                    self._debug_interface.set_registers(registers)
+                    if edit_once:
+                        edit_once = False
+                        # Add the trap flag so that we break again on the next instruction
+                        registers = self._debug_interface.get_registers()
+                        registers.eflags |= TRAP_FLAG
+                        # Lower the instruction pointer so that we'll re-execute this instruction
+                        registers.rip -= 1
+                        self._debug_interface.set_registers(registers)
 
-                    bp.state = Breakpoint.State.WAITING_STEP
 
                     # Add the old byte back so this instruction executes properly
                     # If we have multiple breakpoints then they should all have the same old byte
                     self._debug_interface.write_memory(addr=bp.addr, data=bp.old_byte)
+                    bp.state = Breakpoint.State.WAITING_STEP
 
                     # See https://github.com/python/mypy/issues/708
                     bp.callback()  # type: ignore
 
             # After a breakpoint we let a single step pass
+            # Theoretically we could hit a breakpoint in a different thread at the same time
+            # Because we've moved an instruction we don't know exactly where the old breakpoint was,
+            #  just that it's close to the address we just stopped on
             # Instructions are at most 15 bytes long, so we reset any waiting breakpoints within
             #  that range of where we stopped
-            # In practice this will only be the ones we originally stopped for last time
+            # In practice this should only be the ones we originally stopped for last time
             else:
                 # Even if we don't find any breakpoints, we have to remove the trap flag so that
                 #  the game keeps running properly
                 registers = self._debug_interface.get_registers()
                 registers.eflags &= (TRAP_FLAG ^ 0xFFFFFFFF)
                 self._debug_interface.set_registers(registers)
-                print(f"rip: {registers.rip:08X}")
 
                 for bp in self._current_breakpoints:
-                    if bp.state != Breakpoint.State.WAITING_STEP or bp.addr > addr > bp.addr + 0x10:
+                    if bp.state != Breakpoint.State.WAITING_STEP:
+                        continue
+
+                    if bp.addr > addr > bp.addr + 0x10:
                         continue
 
                     print(f"Resetting Breakpoint at: {bp.name if bp.name else f'{addr:016X}'}")
